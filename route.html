@@ -9,30 +9,25 @@
         body { font-family: Arial, sans-serif; margin: 20px; }
         #map { height: 500px; width: 100%; margin-top: 20px; }
         #routeSummary { margin-top: 20px; white-space: pre-wrap; }
-        .address, place-autocomplete-input {
-            width: 400px;
-        }
-        .address-label {
-            font-style: italic;
-            color: #555;
-        }
+        .address { width: 400px; }
     </style>
 </head>
 <body>
     <h2>Route Optimizer</h2>
     <label for="timeLimit">Total Available Time (minutes):</label>
     <input type="number" id="timeLimit" value="180"><br>
+    <label for="startLocation">Start Location:</label>
+    <input class="address" id="startLocation" placeholder="Enter start location" />
     <label for="startLocationTime">Start Time (HH:MM):</label>
     <input type="time" id="startLocationTime"><br>
     <button onclick="addLocationInput()">Add Location</button>
-    <button onclick="setStartLocation()">Set Start Location</button>
     <div id="locations"></div>
     <button onclick="calculateRoute()">Optimize Route</button>
     <div id="map"></div>
     <div id="routeSummary"></div>
     <script>
         let locations = [];
-        const debugMode = true; // Set to false to disable debug logs
+        const debugMode = true;
         let map;
         let geocoder;
 
@@ -51,7 +46,6 @@
                         div.innerHTML = `
                             <div>
                                 <input class="address" placeholder="Address" value="${results[0].formatted_address}" />
-                                <span class="address-label">${results[0].formatted_address}</span>
                             </div>
                             <input type="number" placeholder="Task Time (minutes)" class="taskTime" />
                             <input type="number" placeholder="Point Value" class="pointValue" />
@@ -86,39 +80,16 @@
             upgradeAutocompleteInputs();
         }
 
-        function setStartLocation() {
-            const startLocation = {
-                address: "Start Location",  // Default address text
-                taskTime: 0,                // No time
-                pointValue: 0               // No points
-            };
-            locations = [startLocation, ...locations];
-            updateLocationsList();
-        }
-
-        function updateLocationsList() {
-            const locationsContainer = document.getElementById("locations");
-            locationsContainer.innerHTML = '';  // Clear the existing list
-            locations.forEach((location, index) => {
-                const div = document.createElement("div");
-                div.innerHTML = `
-                    <input class="address" placeholder="Address" value="${location.address}" />
-                    <input type="number" placeholder="Task Time (minutes)" class="taskTime" value="${location.taskTime}" />
-                    <input type="number" placeholder="Point Value" class="pointValue" value="${location.pointValue}" />
-                    <button onclick="this.parentNode.remove()">Remove</button><br><br>
-                `;
-                locationsContainer.appendChild(div);
-                if (index === 0) {
-                    div.querySelector(".address").disabled = true; // Disable the start location input field
-                }
-                upgradeAutocompleteInputs();
-            });
-        }
-
         function calculateRoute() {
             const timeLimit = parseInt(document.getElementById("timeLimit").value) + 60;
-            const startTime = document.getElementById("startLocationTime").value || "12:00"; // Default time if not specified
-            locations = [];
+            const startTime = document.getElementById("startLocationTime").value || "12:00";
+            const startLocation = document.getElementById("startLocation").value;
+            if (!startLocation) {
+                alert("Please enter a valid start location.");
+                return;
+            }
+            locations = [{ address: startLocation, taskTime: 0, pointValue: 0 }];
+
             document.querySelectorAll("#locations div").forEach(div => {
                 const address = div.querySelector(".address").value;
                 const taskTime = parseInt(div.querySelector(".taskTime").value);
@@ -127,8 +98,9 @@
                     locations.push({ address, taskTime, pointValue });
                 }
             });
+
             if (locations.length < 2) {
-                alert("Enter at least two valid locations.");
+                alert("Enter at least one valid destination.");
                 return;
             }
             optimizeRoute(timeLimit, startTime);
@@ -137,11 +109,16 @@
         function optimizeRoute(timeLimit, startTime) {
             const service = new google.maps.DistanceMatrixService();
             const addresses = locations.map(l => l.address);
+            const now = new Date();
+            const [hours, minutes] = startTime.split(":").map(Number);
+            now.setHours(hours);
+            now.setMinutes(minutes);
+
             service.getDistanceMatrix({
                 origins: addresses,
                 destinations: addresses,
                 travelMode: 'DRIVING',
-                departureTime: new Date(startTime)
+                departureTime: now
             }, (response, status) => {
                 if (status !== 'OK') {
                     alert('Error with Distance Matrix');
@@ -149,7 +126,8 @@
                 }
                 const matrix = response.rows;
                 let bestRoute = [], maxPoints = 0, bestTimestamps = [];
-                function permute(arr, visited = [], timeSpent = 0, points = 0, route = [], timestamps = []) {
+
+                function permute(arr, visited = [0], timeSpent = 0, points = 0, route = [arr[0].address], timestamps = [new Date(now)]) {
                     if (timeSpent > timeLimit) return;
                     if (points > maxPoints) {
                         maxPoints = points;
@@ -157,32 +135,29 @@
                         bestTimestamps = [...timestamps];
                         if (debugMode) {
                             console.log("New best route:", bestRoute);
-                            console.log("Total Points:", maxPoints);
-                            console.log("Total Time:", timeSpent);
                         }
                     }
-                    arr.forEach((_, i) => {
+                    for (let i = 1; i < arr.length; i++) {
                         if (!visited.includes(i)) {
-                            const prev = visited.length ? visited[visited.length - 1] : i;
+                            const prev = visited[visited.length - 1];
                             const travel = matrix[prev]?.elements[i];
-                            if (!travel || travel.status !== 'OK' || !travel.duration) return;
+                            if (!travel || travel.status !== 'OK' || !travel.duration) continue;
                             const travelTime = travel.duration.value / 60;
-                            const newTime = timeSpent + travelTime + locations[i].taskTime;
-                            const newPoints = points + locations[i].pointValue;
-                            const newRoute = [...route, locations[i].address];
-                            const startTimestamp = new Date(Date.now() + timeSpent * 60000);
-                            const newTimestamps = [...timestamps, startTimestamp];
+                            const newTime = timeSpent + travelTime + arr[i].taskTime;
+                            const newPoints = points + arr[i].pointValue;
+                            const startTimestamp = new Date(now.getTime() + newTime * 60000);
                             permute(
                                 arr,
                                 [...visited, i],
                                 newTime,
                                 newPoints,
-                                newRoute,
-                                newTimestamps
+                                [...route, arr[i].address],
+                                [...timestamps, startTimestamp]
                             );
                         }
-                    });
+                    }
                 }
+
                 permute(locations);
                 displayRoute(bestRoute);
                 showSummary(bestRoute, maxPoints, bestTimestamps);
@@ -211,7 +186,6 @@
             }
 
             directionsRenderer.setMap(map);
-
             const waypoints = bestRoute.slice(1, -1).map(location => ({ location, stopover: true }));
             directionsService.route({
                 origin: bestRoute[0],
