@@ -1,224 +1,181 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Route Optimizer</title>
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAUy0_Xmdu4_NVJIVgXJJ0cGLDft-tCd7E&libraries=places"></script>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        #map { height: 500px; width: 100%; margin-top: 20px; }
-        #routeSummary { margin-top: 20px; white-space: pre-wrap; }
-        .address { width: 400px; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Route Optimizer</title>
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAUy0_Xmdu4_NVJIVgXJJ0cGLDft-tCd7E&libraries=places"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .address { width: 400px; }
+    #map { height: 500px; width: 100%; margin-top: 20px; }
+    #routeSummary { margin-top: 20px; white-space: pre-wrap; }
+  </style>
 </head>
 <body>
-    <h2>Route Optimizer</h2>
-    <label for="timeLimit">Total Available Time (minutes):</label>
-    <input type="number" id="timeLimit" value="180"><br>
-    <label for="startLocation">Start Location:</label>
-    <input class="address" id="startLocation" placeholder="Enter start location" />
-    <button onclick="addLocationInput()">Add Location</button>
-    <div id="locations"></div>
-    <button onclick="calculateRoute()">Optimize Route</button>
-    <div id="map"></div>
-    <div id="routeSummary"></div>
-    <script>
-        let locations = [];
-        const debugMode = true;
-        let map;
-        let geocoder;
+  <h2>Route Optimizer</h2>
+  <label for="timeLimit">Total Available Time (minutes):</label>
+  <input type="number" id="timeLimit" value="180"><br>
+  <label for="startLocation">Start Location:</label>
+  <input class="address" id="startLocation" placeholder="Enter start location" /><br>
+  <button onclick="addLocationInput()">Add Location</button>
+  <div id="locations"></div>
+  <button onclick="calculateRoute()">Optimize Route</button>
+  <div id="map"></div>
+  <div id="routeSummary"></div>
 
-        function initMap() {
-            geocoder = new google.maps.Geocoder();
-            map = new google.maps.Map(document.getElementById("map"), {
-                zoom: 10,
-                center: { lat: 37.7749, lng: -122.4194 }
-            });
+  <script>
+    let map, geocoder;
+    const debugMode = true;
 
-            upgradeAutocompleteInputs();
+    function initMap() {
+      geocoder = new google.maps.Geocoder();
+      map = new google.maps.Map(document.getElementById("map"), {
+        center: { lat: 37.7749, lng: -122.4194 },
+        zoom: 10
+      });
 
-            map.addListener("click", (e) => {
-                const latlng = { lat: e.latLng.lat(), lng: e.latLng.lng() };
-                geocoder.geocode({ location: latlng }, (results, status) => {
-                    if (status === "OK" && results[0]) {
-                        const div = document.createElement("div");
-                        div.innerHTML = `
-                            <input class="address" placeholder="Address" value="${results[0].formatted_address}" />
-                            <input type="number" placeholder="Task Time (minutes)" class="taskTime" />
-                            <input type="number" placeholder="Point Value" class="pointValue" />
-                            <button onclick="this.parentNode.remove()">Remove</button><br><br>
-                        `;
-                        document.getElementById("locations").appendChild(div);
-                        upgradeAutocompleteInputs();
-                    }
-                });
-            });
+      upgradeAutocompleteInputs();
+
+      map.addListener("click", (e) => {
+        const latlng = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+        geocoder.geocode({ location: latlng }, (results, status) => {
+          if (status === "OK" && results[0]) {
+            addLocationInput(results[0].formatted_address);
+          }
+        });
+      });
+    }
+
+    function upgradeAutocompleteInputs() {
+      document.querySelectorAll('.address').forEach(input => {
+        if (!input.dataset.bound) {
+          new google.maps.places.Autocomplete(input);
+          input.dataset.bound = true;
         }
+      });
+    }
 
-        function upgradeAutocompleteInputs() {
-            document.querySelectorAll('.address').forEach(input => {
-                if (!input.dataset.bound) {
-                    const autocomplete = new google.maps.places.Autocomplete(input);
-                    input.dataset.bound = true;
-                }
-            });
+    function addLocationInput(prefilled = "") {
+      const div = document.createElement("div");
+      div.innerHTML = `
+        <input class="address" placeholder="Address" value="${prefilled}" />
+        <input type="number" placeholder="Task Time (minutes)" class="taskTime" />
+        <input type="number" placeholder="Point Value" class="pointValue" />
+        <button onclick="this.parentNode.remove()">Remove</button><br><br>
+      `;
+      document.getElementById("locations").appendChild(div);
+      upgradeAutocompleteInputs();
+    }
+
+    function calculateRoute() {
+      const startLocation = document.getElementById("startLocation").value.trim();
+      const timeLimit = parseInt(document.getElementById("timeLimit").value);
+      if (!startLocation || isNaN(timeLimit)) {
+        alert("Start location and time limit are required.");
+        return;
+      }
+
+      const locations = [ { address: startLocation, taskTime: 0, pointValue: 0 } ];
+
+      document.querySelectorAll("#locations > div").forEach(div => {
+        const addressInput = div.querySelector(".address");
+        const taskInput = div.querySelector(".taskTime");
+        const pointInput = div.querySelector(".pointValue");
+
+        const address = addressInput.value.trim();
+        const taskTime = parseInt(taskInput.value);
+        const pointValue = parseInt(pointInput.value);
+
+        if (address && !isNaN(taskTime) && !isNaN(pointValue)) {
+          locations.push({ address, taskTime, pointValue });
         }
+      });
 
-        function addLocationInput() {
-            const div = document.createElement("div");
-            div.innerHTML = `
-                <input class="address" placeholder="Address" />
-                <input type="number" placeholder="Task Time (minutes)" class="taskTime" />
-                <input type="number" placeholder="Point Value" class="pointValue" />
-                <button onclick="this.parentNode.remove()">Remove</button><br><br>
-            `;
-            document.getElementById("locations").appendChild(div);
-            upgradeAutocompleteInputs();
+      if (locations.length < 2) {
+        alert("Enter at least one valid destination.");
+        return;
+      }
+
+      optimizeRoute(locations, timeLimit);
+    }
+
+    function optimizeRoute(locations, timeLimit) {
+      const service = new google.maps.DistanceMatrixService();
+      const addresses = locations.map(l => l.address);
+      service.getDistanceMatrix({
+        origins: addresses,
+        destinations: addresses,
+        travelMode: 'DRIVING'
+      }, (response, status) => {
+        if (status !== 'OK') {
+          alert("Error with Distance Matrix");
+          return;
         }
+        const matrix = response.rows;
+        let bestRoute = [], maxPoints = 0, bestTimes = [];
 
-        function calculateRoute() {
-            const timeLimit = parseInt(document.getElementById("timeLimit").value) + 60;
-            const startTime = document.getElementById("startLocationTime").value || "12:00";
-            const startLocationInput = document.getElementById("startLocation");
-            const startLocation = startLocationInput ? startLocationInput.value.trim() : "";
-            if (!startLocation) {
-                alert("Please enter a valid start location.");
-                return;
+        function permute(path, visited, timeSpent, score, timestamps) {
+          if (timeSpent <= timeLimit && score > maxPoints) {
+            maxPoints = score;
+            bestRoute = [...path];
+            bestTimes = [...timestamps];
+            if (debugMode) console.log("New best:", bestRoute);
+          }
+
+          for (let i = 1; i < locations.length; i++) {
+            if (!visited.includes(i)) {
+              const from = visited[visited.length - 1];
+              const travel = matrix[from]?.elements[i];
+              if (!travel || travel.status !== 'OK') continue;
+              const travelTime = travel.duration.value / 60;
+              const newTime = timeSpent + travelTime + locations[i].taskTime;
+              const newScore = score + locations[i].pointValue;
+              const nowTime = new Date();
+              nowTime.setMinutes(nowTime.getMinutes() + newTime);
+              permute([...path, i], [...visited, i], newTime, newScore, [...timestamps, nowTime]);
             }
-
-            locations = [{ address: startLocation, taskTime: 0, pointValue: 0 }];
-
-            document.querySelectorAll("#locations > div").forEach(div => {
-                const addressInput = div.querySelector(".address");
-                const taskInput = div.querySelector(".taskTime");
-                const pointInput = div.querySelector(".pointValue");
-
-                if (!addressInput || !taskInput || !pointInput) {
-                    if (debugMode) {
-                        console.warn("Skipping incomplete location input block:", div);
-                    }
-                    return;
-                }
-
-                const address = addressInput.value.trim();
-                const taskTime = parseInt(taskInput.value);
-                const pointValue = parseInt(pointInput.value);
-
-                if (address && !isNaN(taskTime) && !isNaN(pointValue)) {
-                    locations.push({ address, taskTime, pointValue });
-                } else if (debugMode) {
-                    console.warn("Skipping invalid location data:", { address, taskTime, pointValue });
-                }
-            });
-
-            if (locations.length < 2) {
-                alert("Enter at least one valid destination.");
-                return;
-            }
-
-            optimizeRoute(timeLimit, startTime);
+          }
         }
 
-        function optimizeRoute(timeLimit, startTime) {
-            const service = new google.maps.DistanceMatrixService();
-            const addresses = locations.map(l => l.address);
-            const now = new Date();
-            const [hours, minutes] = startTime.split(":" ).map(Number);
-            now.setHours(hours);
-            now.setMinutes(minutes);
+        permute([0], [0], 0, 0, [new Date()]);
 
-            service.getDistanceMatrix({
-                origins: addresses,
-                destinations: addresses,
-                travelMode: 'DRIVING'
-                // Removed departureTime due to API limitations
-            }, (response, status) => {
-                if (status !== 'OK') {
-                    alert('Error with Distance Matrix');
-                    return;
-                }
-                const matrix = response.rows;
-                let bestRoute = [], maxPoints = 0, bestTimestamps = [];
+        showSummary(bestRoute.map(i => locations[i].address), maxPoints, bestTimes);
+        displayRoute(bestRoute.map(i => locations[i].address));
+      });
+    }
 
-                function permute(arr, visited = [0], timeSpent = 0, points = 0, route = [arr[0].address], timestamps = [new Date(now)]) {
-                    if (timeSpent > timeLimit) return;
-                    if (points > maxPoints) {
-                        maxPoints = points;
-                        bestRoute = [...route];
-                        bestTimestamps = [...timestamps];
-                        if (debugMode) {
-                            console.log("New best route:", bestRoute);
-                        }
-                    }
-                    for (let i = 1; i < arr.length; i++) {
-                        if (!visited.includes(i)) {
-                            const prev = visited[visited.length - 1];
-                            const travel = matrix[prev]?.elements[i];
-                            if (!travel || travel.status !== 'OK' || !travel.duration) continue;
-                            const travelTime = travel.duration.value / 60;
-                            const newTime = timeSpent + travelTime + arr[i].taskTime;
-                            const newPoints = points + arr[i].pointValue;
-                            const startTimestamp = new Date(now.getTime() + newTime * 60000);
-                            permute(
-                                arr,
-                                [...visited, i],
-                                newTime,
-                                newPoints,
-                                [...route, arr[i].address],
-                                [...timestamps, startTimestamp]
-                            );
-                        }
-                    }
-                }
+    function showSummary(route, points, times) {
+      let summary = `Optimal Route with ${points} Points (some locations may exceed limit):\n\n`;
+      route.forEach((addr, i) => {
+        summary += `${i + 1}. ${addr}`;
+        if (times[i]) summary += ` - ETA ${times[i].toLocaleTimeString()}`;
+        summary += "\n";
+      });
+      document.getElementById("routeSummary").textContent = summary;
+    }
 
-                permute(locations);
-                displayRoute(bestRoute);
-                showSummary(bestRoute, maxPoints, bestTimestamps);
-            });
+    function displayRoute(route) {
+      const directionsService = new google.maps.DirectionsService();
+      const directionsRenderer = new google.maps.DirectionsRenderer();
+      directionsRenderer.setMap(map);
+
+      directionsService.route({
+        origin: route[0],
+        destination: route[route.length - 1],
+        waypoints: route.slice(1, -1).map(loc => ({ location: loc, stopover: true })),
+        travelMode: 'DRIVING'
+      }, (result, status) => {
+        if (status === 'OK') {
+          directionsRenderer.setDirections(result);
+          const bounds = new google.maps.LatLngBounds();
+          result.routes[0].overview_path.forEach(p => bounds.extend(p));
+          map.fitBounds(bounds);
         }
+      });
+    }
 
-        function showSummary(route, points, timestamps) {
-            let summary = `Optimal Route with ${points} Points:\n\n`;
-            route.forEach((address, i) => {
-                summary += `${i + 1}. ${address}`;
-                if (timestamps[i]) {
-                    summary += ` - Arrive at ${timestamps[i].toLocaleTimeString()}`;
-                }
-                summary += "\n";
-            });
-            document.getElementById("routeSummary").textContent = summary;
-        }
-
-        function displayRoute(bestRoute) {
-            const directionsService = new google.maps.DirectionsService();
-            const directionsRenderer = new google.maps.DirectionsRenderer();
-
-            if (bestRoute.length < 2) {
-                alert("No valid route found.");
-                return;
-            }
-
-            directionsRenderer.setMap(map);
-            const waypoints = bestRoute.slice(1, -1).map(location => ({ location, stopover: true }));
-            directionsService.route({
-                origin: bestRoute[0],
-                destination: bestRoute[bestRoute.length - 1],
-                waypoints,
-                travelMode: 'DRIVING'
-            }, (result, status) => {
-                if (status === 'OK') {
-                    directionsRenderer.setDirections(result);
-                    const bounds = new google.maps.LatLngBounds();
-                    result.routes[0].overview_path.forEach(point => bounds.extend(point));
-                    map.fitBounds(bounds);
-                } else {
-                    alert('Could not display directions');
-                }
-            });
-        }
-
-        window.onload = initMap;
-    </script>
+    window.onload = initMap;
+  </script>
 </body>
 </html>
