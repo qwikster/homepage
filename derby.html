@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Route Optimizer</title>
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAUy0_Xmdu4_NVJIVgXJJ0cGLDft-tCd7E&libraries=places,geometry"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAUy0_Xmdu4_NVJIVgXJJ0cGLDft-tCd7E&libraries=places,geometry&callback=initMap" async defer></script>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
@@ -116,6 +116,7 @@
             width: 100%;
             border-radius: 8px;
             margin-top: 20px;
+            background-color: #e0e0e0;
         }
 
         #locations {
@@ -385,7 +386,7 @@
         async function calculateRoute() {
             const timeLimit = parseInt(DOM.timeLimit.value);
 
-            if (isNaN(timeLimit) {
+            if (isNaN(timeLimit)) {
                 showError('Please enter a valid time limit');
                 return;
             }
@@ -398,7 +399,7 @@
                 const taskTime = parseInt(item.querySelector(".taskTime").value);
                 const pointValue = parseInt(item.querySelector(".pointValue").value);
 
-                if (address && !isNaN(taskTime) {
+                if (address && !isNaN(taskTime)) {
                     state.locations.push({
                         id,
                         address,
@@ -667,8 +668,6 @@
                 summary += `   - Time at location: ${location.taskTime} min\n`;
 
                 if (index > 0) {
-                    const fromIndex = route.findIndex(l => l.id === route[index-1].id);
-                    const toIndex = route.findIndex(l => l.id === location.id);
                     const travelTime = calculateTravelTime(route[index-1], location);
 
                     summary += `   - Travel from previous: ${travelTime.toFixed(1)} min\n`;
@@ -763,7 +762,12 @@
 
         // Initialize the app
         function init() {
-            initMap();
+            // If map hasn't initialized yet (might happen if API loads slowly)
+            if (!state.map) {
+                setTimeout(init, 100);
+                return;
+            }
+
             setupEventListeners();
 
             // Add first two location inputs by default
@@ -772,7 +776,11 @@
         }
 
         // Start the app when DOM is loaded
-        document.addEventListener('DOMContentLoaded', init);
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initialize map will be called by the Google Maps API callback
+            // But we'll also set up a fallback in case the API is slow
+            setTimeout(init, 500);
+        });
     </script>
 </body>
 </html>
