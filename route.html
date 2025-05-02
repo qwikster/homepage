@@ -8,6 +8,10 @@
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
         #map { height: 500px; width: 100%; margin-top: 20px; }
+        #routeSummary { margin-top: 20px; white-space: pre-wrap; }
+        .address, place-autocomplete-input {
+            width: 400px;
+        }
     </style>
 </head>
 <body>
@@ -18,6 +22,7 @@
     <div id="locations"></div>
     <button onclick="calculateRoute()">Optimize Route</button>
     <div id="map"></div>
+    <div id="routeSummary"></div>
     <script>
         let locations = [];
         const debugMode = true; // Set to false to disable debug logs
@@ -28,7 +33,7 @@
             geocoder = new google.maps.Geocoder();
             map = new google.maps.Map(document.getElementById("map"), {
                 zoom: 10,
-                center: { lat: 37.7749, lng: -122.4194 } // Default to San Francisco
+                center: { lat: 37.7749, lng: -122.4194 }
             });
 
             map.addListener("click", (e) => {
@@ -37,30 +42,41 @@
                     if (status === "OK" && results[0]) {
                         const div = document.createElement("div");
                         div.innerHTML = `
-                            <input type="text" placeholder="Address" class="address" value="${results[0].formatted_address}">
-                            <input type="number" placeholder="Task Time (minutes)" class="taskTime">
-                            <input type="number" placeholder="Point Value" class="pointValue">
-                            <button onclick="this.parentNode.remove()">Remove</button>
-                            <br><br>
+                            <place-autocomplete-input class="address" placeholder="Address"></place-autocomplete-input>
+                            <input type="number" placeholder="Task Time (minutes)" class="taskTime" />
+                            <input type="number" placeholder="Point Value" class="pointValue" />
+                            <button onclick="this.parentNode.remove()">Remove</button><br><br>
                         `;
+                        div.querySelector("place-autocomplete-input").value = results[0].formatted_address;
                         document.getElementById("locations").appendChild(div);
-                        new google.maps.places.Autocomplete(div.querySelector(".address"));
+                        upgradeAutocompleteInputs();
                     }
                 });
+            });
+        }
+
+        function upgradeAutocompleteInputs() {
+            document.querySelectorAll('place-autocomplete-input').forEach(input => {
+                if (!input.dataset.bound) {
+                    new google.maps.places.PlaceAutocompleteElement({
+                        inputElement: input,
+                        fields: ["formatted_address", "geometry"]
+                    });
+                    input.dataset.bound = true;
+                }
             });
         }
 
         function addLocationInput() {
             const div = document.createElement("div");
             div.innerHTML = `
-                <input type="text" placeholder="Address" class="address">
-                <input type="number" placeholder="Task Time (minutes)" class="taskTime">
-                <input type="number" placeholder="Point Value" class="pointValue">
-                <button onclick="this.parentNode.remove()">Remove</button>
-                <br><br>
+                <place-autocomplete-input class="address" placeholder="Address"></place-autocomplete-input>
+                <input type="number" placeholder="Task Time (minutes)" class="taskTime" />
+                <input type="number" placeholder="Point Value" class="pointValue" />
+                <button onclick="this.parentNode.remove()">Remove</button><br><br>
             `;
             document.getElementById("locations").appendChild(div);
-            new google.maps.places.Autocomplete(div.querySelector(".address"));
+            upgradeAutocompleteInputs();
         }
 
         function calculateRoute() {
@@ -94,12 +110,13 @@
                     return;
                 }
                 const matrix = response.rows;
-                let bestRoute = [], maxPoints = 0;
-                function permute(arr, visited = [], timeSpent = 0, points = 0, route = []) {
+                let bestRoute = [], maxPoints = 0, bestTimestamps = [];
+                function permute(arr, visited = [], timeSpent = 0, points = 0, route = [], timestamps = []) {
                     if (timeSpent > timeLimit) return;
                     if (points > maxPoints) {
                         maxPoints = points;
                         bestRoute = [...route];
+                        bestTimestamps = [...timestamps];
                         if (debugMode) {
                             console.log("New best route:", bestRoute);
                             console.log("Total Points:", maxPoints);
@@ -115,23 +132,35 @@
                             const newTime = timeSpent + travelTime + locations[i].taskTime;
                             const newPoints = points + locations[i].pointValue;
                             const newRoute = [...route, locations[i].address];
-                            if (debugMode) {
-                                console.log(`Trying route:`, newRoute);
-                                console.log(`  Time: ${newTime} min, Points: ${newPoints}`);
-                            }
+                            const startTimestamp = new Date(Date.now() + timeSpent * 60000);
+                            const newTimestamps = [...timestamps, startTimestamp];
                             permute(
                                 arr,
                                 [...visited, i],
                                 newTime,
                                 newPoints,
-                                newRoute
+                                newRoute,
+                                newTimestamps
                             );
                         }
                     });
                 }
                 permute(locations);
                 displayRoute(bestRoute);
+                showSummary(bestRoute, maxPoints, bestTimestamps);
             });
+        }
+
+        function showSummary(route, points, timestamps) {
+            let summary = `Optimal Route with ${points} Points:\n\n`;
+            route.forEach((address, i) => {
+                summary += `${i + 1}. ${address}`;
+                if (timestamps[i]) {
+                    summary += ` - Arrive at ${timestamps[i].toLocaleTimeString()}`;
+                }
+                summary += "\n";
+            });
+            document.getElementById("routeSummary").textContent = summary;
         }
 
         function displayRoute(bestRoute) {
@@ -154,12 +183,9 @@
             }, (result, status) => {
                 if (status === 'OK') {
                     directionsRenderer.setDirections(result);
-
-                    // Automatically center and fit map to the route bounds
                     const bounds = new google.maps.LatLngBounds();
                     result.routes[0].overview_path.forEach(point => bounds.extend(point));
                     map.fitBounds(bounds);
-
                 } else {
                     alert('Could not display directions');
                 }
