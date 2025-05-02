@@ -5,17 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Route Optimizer</title>
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAUy0_Xmdu4_NVJIVgXJJ0cGLDft-tCd7E&libraries=places"></script>
-        <style>
+    <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
         #map { height: 500px; width: 100%; margin-top: 20px; }
         #routeSummary { margin-top: 20px; white-space: pre-wrap; }
-        .address {
+        .address, place-autocomplete-input {
             width: 400px;
         }
-        gmp-place-autocomplete {
-            width: 420px;
-            display: block;
-            margin-bottom: 5px;
+        .address-label {
+            font-style: italic;
+            color: #555;
         }
     </style>
 </head>
@@ -30,7 +29,7 @@
     <div id="routeSummary"></div>
     <script>
         let locations = [];
-        const debugMode = true;
+        const debugMode = true; // Set to false to disable debug logs
         let map;
         let geocoder;
 
@@ -47,30 +46,42 @@
                     if (status === "OK" && results[0]) {
                         const div = document.createElement("div");
                         div.innerHTML = `
-                            <gmp-place-autocomplete>
-                                <input class="address" placeholder="Address" value="${results[0].formatted_address}" />
-                            </gmp-place-autocomplete>
+                            <div>
+                                <place-autocomplete-input class="address" placeholder="Address"></place-autocomplete-input>
+                                <span class="address-label">${results[0].formatted_address}</span>
+                            </div>
                             <input type="number" placeholder="Task Time (minutes)" class="taskTime" />
                             <input type="number" placeholder="Point Value" class="pointValue" />
                             <button onclick="this.parentNode.remove()">Remove</button><br><br>
                         `;
                         document.getElementById("locations").appendChild(div);
+                        upgradeAutocompleteInputs();
                     }
                 });
+            });
+        }
+
+        function upgradeAutocompleteInputs() {
+            document.querySelectorAll('place-autocomplete-input').forEach(input => {
+                if (!input.dataset.bound) {
+                    new google.maps.places.PlaceAutocompleteElement({
+                        inputElement: input
+                    });
+                    input.dataset.bound = true;
+                }
             });
         }
 
         function addLocationInput() {
             const div = document.createElement("div");
             div.innerHTML = `
-                <gmp-place-autocomplete>
-                    <input class="address" placeholder="Address" />
-                </gmp-place-autocomplete>
+                <place-autocomplete-input class="address" placeholder="Address"></place-autocomplete-input>
                 <input type="number" placeholder="Task Time (minutes)" class="taskTime" />
                 <input type="number" placeholder="Point Value" class="pointValue" />
                 <button onclick="this.parentNode.remove()">Remove</button><br><br>
             `;
             document.getElementById("locations").appendChild(div);
+            upgradeAutocompleteInputs();
         }
 
         function calculateRoute() {
