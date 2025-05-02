@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Route Optimizer</title>
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAUy0_Xmdu4_NVJIVgXJJ0cGLDft-tCd7E&libraries=places,geometry&callback=initMap" async defer></script>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
@@ -117,6 +116,10 @@
             border-radius: 8px;
             margin-top: 20px;
             background-color: #e0e0e0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--dark-gray);
         }
 
         #locations {
@@ -160,16 +163,6 @@
             border-radius: 8px;
             white-space: pre-wrap;
             line-height: 1.8;
-        }
-
-        .route-step {
-            margin-bottom: 10px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid var(--medium-gray);
-        }
-
-        .route-step:last-child {
-            border-bottom: none;
         }
 
         .loading {
@@ -269,7 +262,7 @@
 
         <div class="card">
             <h2><i class="fas fa-map-marked-alt"></i> Route Map</h2>
-            <div id="map"></div>
+            <div id="map">Loading map...</div>
         </div>
 
         <div class="card">
@@ -279,7 +272,18 @@
     </main>
 
     <script>
-        // Cache DOM elements
+        // Global state object
+        const AppState = {
+            map: null,
+            geocoder: null,
+            directionsService: null,
+            directionsRenderer: null,
+            placesService: null,
+            locations: [],
+            maxLocationsForPermutation: 8
+        };
+
+        // DOM elements cache
         const DOM = {
             timeLimit: document.getElementById('timeLimit'),
             locationsContainer: document.getElementById('locations'),
@@ -292,52 +296,63 @@
             loadingIndicator: document.getElementById('loadingIndicator')
         };
 
-        // App state
-        const state = {
-            locations: [],
-            map: null,
-            geocoder: null,
-            directionsService: null,
-            directionsRenderer: null,
-            autocompleteService: new google.maps.places.AutocompleteService(),
-            placesService: null,
-            debounceTimer: null,
-            maxLocationsForPermutation: 8 // For performance reasons
-        };
+        // Initialize the application
+        function initApp() {
+            setupEventListeners();
+            loadGoogleMapsAPI();
+            // Add initial location inputs
+            addLocationInput();
+            addLocationInput();
+        }
 
-        // Initialize the map and services
+        // Load Google Maps API
+        function loadGoogleMapsAPI() {
+            const script = document.createElement('script');
+            script.src = `https://maps.googleapis.com/maps/api/js?key=AIzaSyAUy0_Xmdu4_NVJIVgXJJ0cGLDft-tCd7E&libraries=places,geometry&callback=initMap`;
+            script.async = true;
+            script.defer = true;
+            document.head.appendChild(script);
+        }
+
+        // Initialize map when API is loaded
         function initMap() {
-            state.geocoder = new google.maps.Geocoder();
-            state.directionsService = new google.maps.DirectionsService();
-            state.directionsRenderer = new google.maps.DirectionsRenderer({
-                suppressMarkers: false,
-                preserveViewport: false
-            });
+            try {
+                AppState.geocoder = new google.maps.Geocoder();
+                AppState.directionsService = new google.maps.DirectionsService();
+                AppState.directionsRenderer = new google.maps.DirectionsRenderer({
+                    suppressMarkers: false,
+                    preserveViewport: false
+                });
 
-            state.map = new google.maps.Map(DOM.map, {
-                zoom: 10,
-                center: { lat: 37.7749, lng: -122.4194 },
-                gestureHandling: 'cooperative',
-                styles: [
-                    {
+                AppState.map = new google.maps.Map(DOM.map, {
+                    zoom: 10,
+                    center: { lat: 37.7749, lng: -122.4194 },
+                    gestureHandling: 'cooperative',
+                    styles: [{
                         "featureType": "poi",
                         "stylers": [{ "visibility": "off" }]
-                    }
-                ]
-            });
-
-            state.directionsRenderer.setMap(state.map);
-            state.placesService = new google.maps.places.PlacesService(state.map);
-
-            // Click to add location
-            state.map.addListener("click", (e) => {
-                const latlng = { lat: e.latLng.lat(), lng: e.latLng.lng() };
-                state.geocoder.geocode({ location: latlng }, (results, status) => {
-                    if (status === "OK" && results[0]) {
-                        addLocationInput(results[0].formatted_address);
-                    }
+                    }]
                 });
-            });
+
+                AppState.directionsRenderer.setMap(AppState.map);
+                AppState.placesService = new google.maps.places.PlacesService(AppState.map);
+
+                // Click to add location
+                AppState.map.addListener("click", (e) => {
+                    const latlng = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+                    AppState.geocoder.geocode({ location: latlng }, (results, status) => {
+                        if (status === "OK" && results[0]) {
+                            addLocationInput(results[0].formatted_address);
+                        }
+                    });
+                });
+
+                // Remove loading message
+                DOM.map.innerHTML = '';
+            } catch (error) {
+                console.error('Error initializing map:', error);
+                DOM.map.innerHTML = 'Error loading map. Please refresh the page.';
+            }
         }
 
         // Add a new location input field
@@ -359,10 +374,11 @@
 
             DOM.locationsContainer.appendChild(div);
 
-            // Initialize autocomplete for the new address field
-            initAutocomplete(div.querySelector('.address'));
+            // Initialize autocomplete if Google Maps is loaded
+            if (window.google && window.google.maps) {
+                initAutocomplete(div.querySelector('.address'));
+            }
 
-            // Focus the new address field
             div.querySelector('.address').focus();
         }
 
@@ -392,7 +408,7 @@
             }
 
             // Gather all locations
-            state.locations = [];
+            AppState.locations = [];
             document.querySelectorAll(".location-item").forEach(item => {
                 const id = item.dataset.id;
                 const address = item.querySelector(".address").value;
@@ -400,7 +416,7 @@
                 const pointValue = parseInt(item.querySelector(".pointValue").value);
 
                 if (address && !isNaN(taskTime)) {
-                    state.locations.push({
+                    AppState.locations.push({
                         id,
                         address,
                         taskTime: isNaN(taskTime) ? 0 : taskTime,
@@ -409,7 +425,7 @@
                 }
             });
 
-            if (state.locations.length < 2) {
+            if (AppState.locations.length < 2) {
                 showError('Please add at least two valid locations');
                 return;
             }
@@ -435,10 +451,10 @@
 
             // First geocode all addresses to get their coordinates
             const geocodedLocations = await Promise.all(
-                state.locations.map(async (loc) => {
+                AppState.locations.map(async (loc) => {
                     try {
                         const response = await new Promise((resolve, reject) => {
-                            state.geocoder.geocode({ address: loc.address }, (results, status) => {
+                            AppState.geocoder.geocode({ address: loc.address }, (results, status) => {
                                 if (status === 'OK') {
                                     resolve(results);
                                 } else {
@@ -465,7 +481,7 @@
 
             let bestRoute, maxPoints, totalTime;
 
-            if (geocodedLocations.length <= state.maxLocationsForPermutation) {
+            if (geocodedLocations.length <= AppState.maxLocationsForPermutation) {
                 // Use permutation for small number of locations (exact solution)
                 const result = findBestRouteByPermutation(geocodedLocations, distanceMatrix, timeLimit);
                 bestRoute = result.route;
@@ -627,16 +643,16 @@
             }));
 
             return new Promise((resolve, reject) => {
-                state.directionsService.route({
+                AppState.directionsService.route({
                     origin: route[0].address,
                     destination: route[route.length - 1].address,
                     waypoints: waypoints,
                     travelMode: 'DRIVING',
-                    optimizeWaypoints: false, // We've already optimized
+                    optimizeWaypoints: false,
                     provideRouteAlternatives: false
                 }, (response, status) => {
                     if (status === 'OK') {
-                        state.directionsRenderer.setDirections(response);
+                        AppState.directionsRenderer.setDirections(response);
 
                         // Adjust viewport to show the entire route
                         const bounds = new google.maps.LatLngBounds();
@@ -644,7 +660,7 @@
                             bounds.extend(leg.start_location);
                             bounds.extend(leg.end_location);
                         });
-                        state.map.fitBounds(bounds);
+                        AppState.map.fitBounds(bounds);
 
                         resolve();
                     } else {
@@ -714,7 +730,6 @@
             DOM.errorMessage.style.display = 'block';
             DOM.successMessage.style.display = 'none';
 
-            // Hide after 5 seconds
             setTimeout(() => {
                 DOM.errorMessage.style.display = 'none';
             }, 5000);
@@ -726,13 +741,12 @@
             DOM.successMessage.style.display = 'block';
             DOM.errorMessage.style.display = 'none';
 
-            // Hide after 5 seconds
             setTimeout(() => {
                 DOM.successMessage.style.display = 'none';
             }, 5000);
         }
 
-        // Event listeners
+        // Setup event listeners
         function setupEventListeners() {
             DOM.addLocationBtn.addEventListener('click', () => {
                 addLocationInput();
@@ -760,27 +774,8 @@
             });
         }
 
-        // Initialize the app
-        function init() {
-            // If map hasn't initialized yet (might happen if API loads slowly)
-            if (!state.map) {
-                setTimeout(init, 100);
-                return;
-            }
-
-            setupEventListeners();
-
-            // Add first two location inputs by default
-            addLocationInput();
-            addLocationInput();
-        }
-
         // Start the app when DOM is loaded
-        document.addEventListener('DOMContentLoaded', () => {
-            // Initialize map will be called by the Google Maps API callback
-            // But we'll also set up a fallback in case the API is slow
-            setTimeout(init, 500);
-        });
+        document.addEventListener('DOMContentLoaded', initApp);
     </script>
 </body>
 </html>
