@@ -47,7 +47,7 @@
                         const div = document.createElement("div");
                         div.innerHTML = `
                             <div>
-                                <place-autocomplete-input class="address" placeholder="Address"></place-autocomplete-input>
+                                <input class="address" placeholder="Address" value="${results[0].formatted_address}" />
                                 <span class="address-label">${results[0].formatted_address}</span>
                             </div>
                             <input type="number" placeholder="Task Time (minutes)" class="taskTime" />
@@ -62,11 +62,10 @@
         }
 
         function upgradeAutocompleteInputs() {
-            document.querySelectorAll('place-autocomplete-input').forEach(input => {
+            document.querySelectorAll('.address').forEach(input => {
                 if (!input.dataset.bound) {
-                    new google.maps.places.PlaceAutocompleteElement({
-                        inputElement: input
-                    });
+                    const autocomplete = new google.maps.places.Autocomplete(input);
+                    autocomplete.setFields(["formatted_address", "geometry"]);
                     input.dataset.bound = true;
                 }
             });
@@ -75,7 +74,7 @@
         function addLocationInput() {
             const div = document.createElement("div");
             div.innerHTML = `
-                <place-autocomplete-input class="address" placeholder="Address"></place-autocomplete-input>
+                <input class="address" placeholder="Address" />
                 <input type="number" placeholder="Task Time (minutes)" class="taskTime" />
                 <input type="number" placeholder="Point Value" class="pointValue" />
                 <button onclick="this.parentNode.remove()">Remove</button><br><br>
