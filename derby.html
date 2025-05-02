@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Route Optimizer</title>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAUy0_Xmdu4_NVJIVgXJJ0cGLDft-tCd7E&libraries=places,geometry"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        :root {
+            --primary-color: #4285F4;
+            --secondary-color: #34A853;
+            --accent-color: #EA4335;
+            --text-color: #333;
+            --light-gray: #f5f5f5;
+            --medium-gray: #e0e0e0;
+            --dark-gray: #757575;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            color: var(--text-color);
+            line-height: 1.6;
+            padding: 0;
+            margin: 0;
+            background-color: var(--light-gray);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 15px 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            font-weight: 500;
+            font-size: 1.8rem;
+            margin: 0;
+        }
+
+        .card {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        input, select, button {
+            width: 100%;
+            padding: 10px 15px;
+            border: 1px solid var(--medium-gray);
+            border-radius: 4px;
+            font-size: 16px;
+        }
+
+        button {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background-color 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        button:hover {
+            background-color: #3367d6;
+        }
+
+        button.secondary {
+            background-color: var(--secondary-color);
+        }
+
+        button.secondary:hover {
+            background-color: #2d9249;
+        }
+
+        button.danger {
+            background-color: var(--accent-color);
+        }
+
+        button.danger:hover {
+            background-color: #d33426;
+        }
+
+        #map {
+            height: 400px;
+            width: 100%;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+
+        #locations {
+            margin: 20px 0;
+        }
+
+        .location-item {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+            padding: 15px;
+            background-color: var(--light-gray);
+            border-radius: 6px;
+            margin-bottom: 15px;
+            position: relative;
+        }
+
+        .location-item .address {
+            flex: 1 1 300px;
+            min-width: 200px;
+        }
+
+        .location-item .taskTime,
+        .location-item .pointValue {
+            flex: 0 0 100px;
+        }
+
+        .location-item .remove-btn {
+            flex: 0 0 40px;
+            width: 40px;
+            height: 40px;
+            padding: 0;
+            border-radius: 50%;
+        }
+
+        #routeSummary {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #e8f0fe;
+            border-radius: 8px;
+            white-space: pre-wrap;
+            line-height: 1.8;
+        }
+
+        .route-step {
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--medium-gray);
+        }
+
+        .route-step:last-child {
+            border-bottom: none;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            border-top: 4px solid var(--primary-color);
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error-message {
+            color: var(--accent-color);
+            background-color: #fde8e8;
+            padding: 10px 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+            display: none;
+        }
+
+        .success-message {
+            color: var(--secondary-color);
+            background-color: #e8f5e9;
+            padding: 10px 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 15px;
+            }
+
+            .location-item {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .location-item .address,
+            .location-item .taskTime,
+            .location-item .pointValue {
+                flex: 1 1 auto;
+                width: 100%;
+            }
+
+            #map {
+                height: 300px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1><i class="fas fa-route"></i> Route Optimizer</h1>
+        </div>
+    </header>
+
+    <main class="container">
+        <div class="card">
+            <div class="form-group">
+                <label for="timeLimit"><i class="fas fa-clock"></i> Total Available Time (minutes):</label>
+                <input type="number" id="timeLimit" value="180" min="1">
+            </div>
+
+            <button id="addLocationBtn" class="secondary">
+                <i class="fas fa-plus"></i> Add Location
+            </button>
+
+            <div id="locations"></div>
+
+            <div class="error-message" id="errorMessage"></div>
+            <div class="success-message" id="successMessage"></div>
+
+            <div class="loading" id="loadingIndicator">
+                <div class="spinner"></div>
+                <p>Calculating optimal route...</p>
+            </div>
+
+            <button id="calculateRouteBtn">
+                <i class="fas fa-calculator"></i> Optimize Route
+            </button>
+        </div>
+
+        <div class="card">
+            <h2><i class="fas fa-map-marked-alt"></i> Route Map</h2>
+            <div id="map"></div>
+        </div>
+
+        <div class="card">
+            <h2><i class="fas fa-list-ol"></i> Route Summary</h2>
+            <div id="routeSummary">Add locations and click "Optimize Route" to generate your optimal path.</div>
+        </div>
+    </main>
+
+    <script>
+        // Cache DOM elements
+        const DOM = {
+            timeLimit: document.getElementById('timeLimit'),
+            locationsContainer: document.getElementById('locations'),
+            addLocationBtn: document.getElementById('addLocationBtn'),
+            calculateRouteBtn: document.getElementById('calculateRouteBtn'),
+            map: document.getElementById('map'),
+            routeSummary: document.getElementById('routeSummary'),
+            errorMessage: document.getElementById('errorMessage'),
+            successMessage: document.getElementById('successMessage'),
+            loadingIndicator: document.getElementById('loadingIndicator')
+        };
+
+        // App state
+        const state = {
+            locations: [],
+            map: null,
+            geocoder: null,
+            directionsService: null,
+            directionsRenderer: null,
+            autocompleteService: new google.maps.places.AutocompleteService(),
+            placesService: null,
+            debounceTimer: null,
+            maxLocationsForPermutation: 8 // For performance reasons
+        };
+
+        // Initialize the map and services
+        function initMap() {
+            state.geocoder = new google.maps.Geocoder();
+            state.directionsService = new google.maps.DirectionsService();
+            state.directionsRenderer = new google.maps.DirectionsRenderer({
+                suppressMarkers: false,
+                preserveViewport: false
+            });
+
+            state.map = new google.maps.Map(DOM.map, {
+                zoom: 10,
+                center: { lat: 37.7749, lng: -122.4194 },
+                gestureHandling: 'cooperative',
+                styles: [
+                    {
+                        "featureType": "poi",
+                        "stylers": [{ "visibility": "off" }]
+                    }
+                ]
+            });
+
+            state.directionsRenderer.setMap(state.map);
+            state.placesService = new google.maps.places.PlacesService(state.map);
+
+            // Click to add location
+            state.map.addListener("click", (e) => {
+                const latlng = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+                state.geocoder.geocode({ location: latlng }, (results, status) => {
+                    if (status === "OK" && results[0]) {
+                        addLocationInput(results[0].formatted_address);
+                    }
+                });
+            });
+        }
+
+        // Add a new location input field
+        function addLocationInput(prefilledAddress = '') {
+            const locationId = Date.now();
+            const div = document.createElement('div');
+            div.className = 'location-item';
+            div.dataset.id = locationId;
+
+            div.innerHTML = `
+                <input class="address" placeholder="Address" value="${prefilledAddress}"
+                    data-id="${locationId}" autocomplete="off" />
+                <input type="number" class="taskTime" placeholder="Time (min)" min="1" data-id="${locationId}" />
+                <input type="number" class="pointValue" placeholder="Points" min="1" data-id="${locationId}" />
+                <button class="danger remove-btn" data-id="${locationId}">
+                    <i class="fas fa-times"></i>
+                </button>
+            `;
+
+            DOM.locationsContainer.appendChild(div);
+
+            // Initialize autocomplete for the new address field
+            initAutocomplete(div.querySelector('.address'));
+
+            // Focus the new address field
+            div.querySelector('.address').focus();
+        }
+
+        // Initialize Google Places autocomplete
+        function initAutocomplete(inputElement) {
+            const autocomplete = new google.maps.places.Autocomplete(
+                inputElement,
+                { types: ['geocode'], fields: ['geometry', 'formatted_address'] }
+            );
+
+            autocomplete.addListener('place_changed', () => {
+                const place = autocomplete.getPlace();
+                if (!place.geometry) {
+                    showError('Location not found. Please select from the dropdown.');
+                    inputElement.value = '';
+                }
+            });
+        }
+
+        // Calculate the optimal route
+        async function calculateRoute() {
+            const timeLimit = parseInt(DOM.timeLimit.value);
+
+            if (isNaN(timeLimit) {
+                showError('Please enter a valid time limit');
+                return;
+            }
+
+            // Gather all locations
+            state.locations = [];
+            document.querySelectorAll(".location-item").forEach(item => {
+                const id = item.dataset.id;
+                const address = item.querySelector(".address").value;
+                const taskTime = parseInt(item.querySelector(".taskTime").value);
+                const pointValue = parseInt(item.querySelector(".pointValue").value);
+
+                if (address && !isNaN(taskTime) {
+                    state.locations.push({
+                        id,
+                        address,
+                        taskTime: isNaN(taskTime) ? 0 : taskTime,
+                        pointValue: isNaN(pointValue) ? 1 : pointValue
+                    });
+                }
+            });
+
+            if (state.locations.length < 2) {
+                showError('Please add at least two valid locations');
+                return;
+            }
+
+            // Show loading indicator
+            DOM.loadingIndicator.style.display = 'block';
+            DOM.calculateRouteBtn.disabled = true;
+
+            try {
+                await optimizeRoute(timeLimit);
+            } catch (error) {
+                console.error('Route optimization error:', error);
+                showError('An error occurred while calculating the route. Please try again.');
+            } finally {
+                DOM.loadingIndicator.style.display = 'none';
+                DOM.calculateRouteBtn.disabled = false;
+            }
+        }
+
+        // Optimize the route using permutations (for small sets) or greedy algorithm (for larger sets)
+        async function optimizeRoute(timeLimit) {
+            const startTime = performance.now();
+
+            // First geocode all addresses to get their coordinates
+            const geocodedLocations = await Promise.all(
+                state.locations.map(async (loc) => {
+                    try {
+                        const response = await new Promise((resolve, reject) => {
+                            state.geocoder.geocode({ address: loc.address }, (results, status) => {
+                                if (status === 'OK') {
+                                    resolve(results);
+                                } else {
+                                    reject(new Error('Geocode failed for address: ' + loc.address));
+                                }
+                            });
+                        });
+
+                        const location = response[0].geometry.location;
+                        return {
+                            ...loc,
+                            lat: location.lat(),
+                            lng: location.lng()
+                        };
+                    } catch (error) {
+                        console.error('Geocoding error:', error);
+                        throw new Error(`Could not find location: ${loc.address}`);
+                    }
+                })
+            );
+
+            // Build distance matrix
+            const distanceMatrix = await buildDistanceMatrix(geocodedLocations);
+
+            let bestRoute, maxPoints, totalTime;
+
+            if (geocodedLocations.length <= state.maxLocationsForPermutation) {
+                // Use permutation for small number of locations (exact solution)
+                const result = findBestRouteByPermutation(geocodedLocations, distanceMatrix, timeLimit);
+                bestRoute = result.route;
+                maxPoints = result.points;
+                totalTime = result.time;
+            } else {
+                // Use greedy algorithm for larger number of locations (approximate solution)
+                const result = findBestRouteByGreedyAlgorithm(geocodedLocations, distanceMatrix, timeLimit);
+                bestRoute = result.route;
+                maxPoints = result.points;
+                totalTime = result.time;
+            }
+
+            // Display results
+            if (bestRoute && bestRoute.length >= 2) {
+                const endTime = performance.now();
+                console.log(`Optimization took ${(endTime - startTime).toFixed(2)}ms`);
+
+                await displayRoute(bestRoute);
+                showSummary(bestRoute, maxPoints, totalTime);
+
+                showSuccess(`Found optimal route with ${maxPoints} points in ${totalTime.toFixed(1)} minutes`);
+            } else {
+                showError('No valid route found within the time limit');
+            }
+        }
+
+        // Build distance matrix using Distance Matrix API
+        async function buildDistanceMatrix(locations) {
+            const addresses = locations.map(l => l.address);
+
+            return new Promise((resolve, reject) => {
+                const service = new google.maps.DistanceMatrixService();
+                service.getDistanceMatrix({
+                    origins: addresses,
+                    destinations: addresses,
+                    travelMode: 'DRIVING',
+                    avoidHighways: false,
+                    avoidTolls: false,
+                    unitSystem: google.maps.UnitSystem.IMPERIAL
+                }, (response, status) => {
+                    if (status === 'OK') {
+                        // Convert to a simple 2D array of travel times in minutes
+                        const matrix = response.rows.map(row =>
+                            row.elements.map(el => el.status === 'OK' ? el.duration.value / 60 : Infinity)
+                        );
+                        resolve(matrix);
+                    } else {
+                        reject(new Error('Distance Matrix request failed: ' + status));
+                    }
+                });
+            });
+        }
+
+        // Find best route by trying all permutations (for small n)
+        function findBestRouteByPermutation(locations, distanceMatrix, timeLimit) {
+            let bestRoute = [];
+            let maxPoints = 0;
+            let bestTime = 0;
+
+            // Generate all permutations and evaluate them
+            function permute(arr, visited = [], currentTime = 0, currentPoints = 0, route = []) {
+                if (currentTime > timeLimit) return;
+
+                if (currentPoints > maxPoints ||
+                    (currentPoints === maxPoints && currentTime < bestTime)) {
+                    maxPoints = currentPoints;
+                    bestRoute = [...route];
+                    bestTime = currentTime;
+                }
+
+                for (let i = 0; i < arr.length; i++) {
+                    if (!visited.includes(i)) {
+                        const travelTime = visited.length
+                            ? distanceMatrix[visited[visited.length - 1]][i]
+                            : 0;
+
+                        const newTime = currentTime + travelTime + arr[i].taskTime;
+                        const newPoints = currentPoints + arr[i].pointValue;
+
+                        permute(
+                            arr,
+                            [...visited, i],
+                            newTime,
+                            newPoints,
+                            [...route, arr[i]]
+                        );
+                    }
+                }
+            }
+
+            permute(locations);
+            return { route: bestRoute, points: maxPoints, time: bestTime };
+        }
+
+        // Find approximate best route using greedy algorithm (for large n)
+        function findBestRouteByGreedyAlgorithm(locations, distanceMatrix, timeLimit) {
+            let remainingLocations = [...locations];
+            let currentLocation = null;
+            let currentTime = 0;
+            let totalPoints = 0;
+            let route = [];
+
+            // Start with the location that has the highest points/time ratio
+            remainingLocations.sort((a, b) =>
+                (b.pointValue / b.taskTime) - (a.pointValue / a.taskTime)
+            );
+
+            // Initialize with the best starting point
+            currentLocation = remainingLocations.shift();
+            route.push(currentLocation);
+            currentTime += currentLocation.taskTime;
+            totalPoints += currentLocation.pointValue;
+
+            // Keep adding the most valuable next location that fits in the time limit
+            while (remainingLocations.length > 0 && currentTime < timeLimit) {
+                // Find the next location with best points/(travel+task time) ratio
+                let bestNext = null;
+                let bestRatio = -Infinity;
+                let bestIndex = -1;
+                let travelTimeToBest = 0;
+
+                for (let i = 0; i < remainingLocations.length; i++) {
+                    const fromIndex = locations.indexOf(currentLocation);
+                    const toIndex = locations.indexOf(remainingLocations[i]);
+                    const travelTime = distanceMatrix[fromIndex][toIndex];
+                    const totalTimeForLocation = travelTime + remainingLocations[i].taskTime;
+                    const timeRatio = remainingLocations[i].pointValue / totalTimeForLocation;
+
+                    if (timeRatio > bestRatio && currentTime + totalTimeForLocation <= timeLimit) {
+                        bestRatio = timeRatio;
+                        bestNext = remainingLocations[i];
+                        bestIndex = i;
+                        travelTimeToBest = travelTime;
+                    }
+                }
+
+                if (bestNext) {
+                    route.push(bestNext);
+                    currentTime += travelTimeToBest + bestNext.taskTime;
+                    totalPoints += bestNext.pointValue;
+                    remainingLocations.splice(bestIndex, 1);
+                    currentLocation = bestNext;
+                } else {
+                    break; // No more locations fit in the time limit
+                }
+            }
+
+            return { route, points: totalPoints, time: currentTime };
+        }
+
+        // Display the optimized route on the map
+        async function displayRoute(route) {
+            if (route.length < 2) return;
+
+            const waypoints = route.slice(1, -1).map(location => ({
+                location: location.address,
+                stopover: true
+            }));
+
+            return new Promise((resolve, reject) => {
+                state.directionsService.route({
+                    origin: route[0].address,
+                    destination: route[route.length - 1].address,
+                    waypoints: waypoints,
+                    travelMode: 'DRIVING',
+                    optimizeWaypoints: false, // We've already optimized
+                    provideRouteAlternatives: false
+                }, (response, status) => {
+                    if (status === 'OK') {
+                        state.directionsRenderer.setDirections(response);
+
+                        // Adjust viewport to show the entire route
+                        const bounds = new google.maps.LatLngBounds();
+                        response.routes[0].legs.forEach(leg => {
+                            bounds.extend(leg.start_location);
+                            bounds.extend(leg.end_location);
+                        });
+                        state.map.fitBounds(bounds);
+
+                        resolve();
+                    } else {
+                        reject(new Error('Directions request failed: ' + status));
+                    }
+                });
+            });
+        }
+
+        // Show the route summary
+        function showSummary(route, points, totalTime) {
+            let summary = `Optimal Route (${points} points in ${totalTime.toFixed(1)} minutes):\n\n`;
+            let cumulativeTime = 0;
+
+            route.forEach((location, index) => {
+                const arrivalTime = new Date();
+                arrivalTime.setMinutes(arrivalTime.getMinutes() + cumulativeTime);
+
+                summary += `${index + 1}. ${location.address}\n`;
+                summary += `   - Points: ${location.pointValue}\n`;
+                summary += `   - Time at location: ${location.taskTime} min\n`;
+
+                if (index > 0) {
+                    const fromIndex = route.findIndex(l => l.id === route[index-1].id);
+                    const toIndex = route.findIndex(l => l.id === location.id);
+                    const travelTime = calculateTravelTime(route[index-1], location);
+
+                    summary += `   - Travel from previous: ${travelTime.toFixed(1)} min\n`;
+                    summary += `   - Arrival time: ${arrivalTime.toLocaleTimeString()}\n`;
+
+                    cumulativeTime += travelTime + location.taskTime;
+                } else {
+                    cumulativeTime += location.taskTime;
+                }
+
+                summary += '\n';
+            });
+
+            DOM.routeSummary.textContent = summary;
+        }
+
+        // Calculate travel time between two locations (simplified)
+        function calculateTravelTime(location1, location2) {
+            if (!location1.lat || !location2.lat) return 0;
+
+            const lat1 = location1.lat;
+            const lng1 = location1.lng;
+            const lat2 = location2.lat;
+            const lng2 = location2.lng;
+
+            // Haversine distance in miles
+            const R = 3958.8; // Earth radius in miles
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLng = (lng2 - lng1) * Math.PI / 180;
+            const a =
+                Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLng/2) * Math.sin(dLng/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            const distance = R * c;
+
+            // Estimate travel time (assuming average speed of 30 mph in city)
+            return (distance / 30) * 60; // in minutes
+        }
+
+        // Show error message
+        function showError(message) {
+            DOM.errorMessage.textContent = message;
+            DOM.errorMessage.style.display = 'block';
+            DOM.successMessage.style.display = 'none';
+
+            // Hide after 5 seconds
+            setTimeout(() => {
+                DOM.errorMessage.style.display = 'none';
+            }, 5000);
+        }
+
+        // Show success message
+        function showSuccess(message) {
+            DOM.successMessage.textContent = message;
+            DOM.successMessage.style.display = 'block';
+            DOM.errorMessage.style.display = 'none';
+
+            // Hide after 5 seconds
+            setTimeout(() => {
+                DOM.successMessage.style.display = 'none';
+            }, 5000);
+        }
+
+        // Event listeners
+        function setupEventListeners() {
+            DOM.addLocationBtn.addEventListener('click', () => {
+                addLocationInput();
+            });
+
+            DOM.calculateRouteBtn.addEventListener('click', () => {
+                calculateRoute();
+            });
+
+            // Event delegation for remove buttons
+            DOM.locationsContainer.addEventListener('click', (e) => {
+                if (e.target.closest('.remove-btn')) {
+                    const item = e.target.closest('.location-item');
+                    if (item) {
+                        item.remove();
+                    }
+                }
+            });
+
+            // Handle Enter key in inputs
+            DOM.locationsContainer.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && e.target.classList.contains('address')) {
+                    addLocationInput();
+                }
+            });
+        }
+
+        // Initialize the app
+        function init() {
+            initMap();
+            setupEventListeners();
+
+            // Add first two location inputs by default
+            addLocationInput();
+            addLocationInput();
+        }
+
+        // Start the app when DOM is loaded
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
