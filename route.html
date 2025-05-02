@@ -133,8 +133,8 @@
             service.getDistanceMatrix({
                 origins: addresses,
                 destinations: addresses,
-                travelMode: 'DRIVING',
-                departureTime: now
+                travelMode: 'DRIVING'
+                // Removed departureTime due to API limitations
             }, (response, status) => {
                 if (status !== 'OK') {
                     alert('Error with Distance Matrix');
