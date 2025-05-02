@@ -77,119 +77,92 @@
         return;
       }
 
-      const coreLocations = [ { address: startLocation, taskTime: 0, pointValue: 0 } ];
+      const coreLocations = [];
       const bonusLocations = [];
 
       document.querySelectorAll("#locations > div").forEach(div => {
-        const addressInput = div.querySelector(".address");
-        const taskInput = div.querySelector(".taskTime");
-        const pointInput = div.querySelector(".pointValue");
-
-        const address = addressInput?.value.trim();
-        const taskTime = parseInt(taskInput?.value);
-        const pointValue = parseInt(pointInput?.value);
+        const address = div.querySelector(".address")?.value.trim();
+        const taskTime = parseInt(div.querySelector(".taskTime")?.value);
+        const pointValue = parseInt(div.querySelector(".pointValue")?.value);
         const isBonus = div.dataset.bonus === "true";
 
         if (address && !isNaN(taskTime) && !isNaN(pointValue)) {
-          const entry = { address, taskTime, pointValue };
-          (isBonus ? bonusLocations : coreLocations).push(entry);
+          (isBonus ? bonusLocations : coreLocations).push({ address, taskTime, pointValue });
         }
       });
 
-      if (coreLocations.length < 2) {
-        alert("Enter at least one valid core destination.");
+      if (coreLocations.length === 0) {
+        alert("At least one core location required.");
         return;
       }
 
-      const service = new google.maps.DistanceMatrixService();
-      const allLocations = [...coreLocations, ...bonusLocations];
+      const allLocations = [ { address: startLocation }, ...coreLocations, ...bonusLocations ];
       const addresses = allLocations.map(l => l.address);
 
+      const service = new google.maps.DistanceMatrixService();
       service.getDistanceMatrix({
         origins: addresses,
         destinations: addresses,
         travelMode: 'DRIVING'
       }, (response, status) => {
         if (status !== 'OK') {
-          alert("Distance Matrix failed");
+          alert("Failed to fetch distance matrix.");
           return;
         }
 
         const matrix = response.rows;
-        const n = coreLocations.length;
-        const dp = Array(1 << n).fill().map(() => Array(n).fill(Infinity));
-        const score = Array(1 << n).fill().map(() => Array(n).fill(0));
-        dp[1][0] = 0;
+        const visited = new Array(coreLocations.length).fill(false);
+        const route = [startLocation];
+        let timeUsed = 0;
+        let score = 0;
+        let currentIndex = 0;
 
-        for (let mask = 1; mask < (1 << n); mask++) {
-          for (let u = 0; u < n; u++) {
-            if (!(mask & (1 << u))) continue;
-            for (let v = 0; v < n; v++) {
-              if (mask & (1 << v)) continue;
-              const travel = matrix[u].elements[v];
-              if (travel.status !== 'OK') continue;
-              const travelTime = travel.duration.value / 60;
-              const totalTime = dp[mask][u] + travelTime + coreLocations[v].taskTime;
-              const totalScore = score[mask][u] + coreLocations[v].pointValue;
-              const nextMask = mask | (1 << v);
-              if (totalTime <= timeLimit && totalScore > score[nextMask][v]) {
-                dp[nextMask][v] = totalTime;
-                score[nextMask][v] = totalScore;
-              }
+        while (true) {
+          let bestIdx = -1;
+          let bestScoreRatio = 0;
+
+          for (let i = 0; i < coreLocations.length; i++) {
+            if (visited[i]) continue;
+            const idx = i + 1;
+            const element = matrix[currentIndex].elements[idx];
+            if (element.status !== 'OK') continue;
+            const travelTime = element.duration.value / 60;
+            const total = travelTime + coreLocations[i].taskTime;
+            if (timeUsed + total > timeLimit) continue;
+            const ratio = coreLocations[i].pointValue / total;
+            if (ratio > bestScoreRatio) {
+              bestScoreRatio = ratio;
+              bestIdx = i;
             }
           }
-        }
 
-        let maxScore = 0, bestEnd = 0, bestMask = 0;
-        for (let mask = 0; mask < (1 << n); mask++) {
-          for (let u = 0; u < n; u++) {
-            if (score[mask][u] > maxScore) {
-              maxScore = score[mask][u];
-              bestEnd = u;
-              bestMask = mask;
-            }
-          }
+          if (bestIdx === -1) break;
+          visited[bestIdx] = true;
+          const idx = bestIdx + 1;
+          const element = matrix[currentIndex].elements[idx];
+          const travelTime = element.duration.value / 60;
+          timeUsed += travelTime + coreLocations[bestIdx].taskTime;
+          score += coreLocations[bestIdx].pointValue;
+          currentIndex = idx;
+          route.push(coreLocations[bestIdx].address);
         }
-
-        const path = [];
-        let u = bestEnd, mask = bestMask;
-        while (mask > 1) {
-          path.push(u);
-          for (let v = 0; v < n; v++) {
-            if ((mask & (1 << v)) && v !== u) {
-              const travel = matrix[v].elements[u].duration.value / 60;
-              const prevTime = dp[mask][u] - travel - coreLocations[u].taskTime;
-              if (Math.abs(dp[mask ^ (1 << u)][v] - prevTime) < 1e-6) {
-                u = v;
-                mask ^= (1 << u);
-                break;
-              }
-            }
-          }
-        }
-        path.push(0);
-        path.reverse();
-
-        let usedTime = dp[bestMask][bestEnd];
-        let spareTime = timeLimit - usedTime;
-        const coreAddresses = path.map(i => coreLocations[i].address);
 
         const bonusUsed = [];
-        let lastCoreIndex = path[path.length - 1];
         bonusLocations.forEach((b, i) => {
-          const idx = coreLocations.length + i;
-          const travel = matrix[lastCoreIndex].elements[idx];
+          const idx = coreLocations.length + 1 + i;
+          const travel = matrix[currentIndex].elements[idx];
           if (travel.status !== 'OK') return;
           const travelTime = travel.duration.value / 60;
-          if (travelTime + b.taskTime <= spareTime) {
+          if (travelTime + b.taskTime <= (timeLimit - timeUsed)) {
             bonusUsed.push(b);
-            spareTime -= (travelTime + b.taskTime);
-            lastCoreIndex = idx;
+            timeUsed += travelTime + b.taskTime;
+            currentIndex = idx;
+            route.push(b.address);
           }
         });
 
-        showSummary(coreAddresses, maxScore, bonusUsed);
-        displayRoute(coreAddresses.concat(bonusUsed.map(b => b.address)));
+        showSummary(route, score, bonusUsed);
+        displayRoute(route);
       });
     }
 
