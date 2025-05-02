@@ -18,7 +18,8 @@
   <input type="number" id="timeLimit" value="180"><br>
   <label for="startLocation">Start Location:</label>
   <input class="address" id="startLocation" placeholder="Enter start location" /><br>
-  <button onclick="addLocationInput()">Add Location</button>
+  <button onclick="addLocationInput(false)">Add Core Location</button>
+  <button onclick="addLocationInput(true)">Add Bonus Location</button>
   <div id="locations"></div>
   <button onclick="calculateRoute()">Optimize Route</button>
   <div id="map"></div>
@@ -26,7 +27,6 @@
 
   <script>
     let map, geocoder;
-    const debugMode = true;
 
     function initMap() {
       geocoder = new google.maps.Geocoder();
@@ -41,7 +41,7 @@
         const latlng = { lat: e.latLng.lat(), lng: e.latLng.lng() };
         geocoder.geocode({ location: latlng }, (results, status) => {
           if (status === "OK" && results[0]) {
-            addLocationInput(results[0].formatted_address);
+            addLocationInput(false, results[0].formatted_address);
           }
         });
       });
@@ -56,8 +56,9 @@
       });
     }
 
-    function addLocationInput(prefilled = "") {
+    function addLocationInput(isBonus = false, prefilled = "") {
       const div = document.createElement("div");
+      div.dataset.bonus = isBonus;
       div.innerHTML = `
         <input class="address" placeholder="Address" value="${prefilled}" />
         <input type="number" placeholder="Task Time (minutes)" class="taskTime" />
@@ -68,7 +69,7 @@
       upgradeAutocompleteInputs();
     }
 
-    function calculateRoute() {
+    async function calculateRoute() {
       const startLocation = document.getElementById("startLocation").value.trim();
       const timeLimit = parseInt(document.getElementById("timeLimit").value);
       if (!startLocation || isNaN(timeLimit)) {
@@ -76,82 +77,131 @@
         return;
       }
 
-      const locations = [ { address: startLocation, taskTime: 0, pointValue: 0 } ];
+      const coreLocations = [ { address: startLocation, taskTime: 0, pointValue: 0 } ];
+      const bonusLocations = [];
 
       document.querySelectorAll("#locations > div").forEach(div => {
         const addressInput = div.querySelector(".address");
         const taskInput = div.querySelector(".taskTime");
         const pointInput = div.querySelector(".pointValue");
 
-        const address = addressInput.value.trim();
-        const taskTime = parseInt(taskInput.value);
-        const pointValue = parseInt(pointInput.value);
+        const address = addressInput?.value.trim();
+        const taskTime = parseInt(taskInput?.value);
+        const pointValue = parseInt(pointInput?.value);
+        const isBonus = div.dataset.bonus === "true";
 
         if (address && !isNaN(taskTime) && !isNaN(pointValue)) {
-          locations.push({ address, taskTime, pointValue });
+          const entry = { address, taskTime, pointValue };
+          (isBonus ? bonusLocations : coreLocations).push(entry);
         }
       });
 
-      if (locations.length < 2) {
-        alert("Enter at least one valid destination.");
+      if (coreLocations.length < 2) {
+        alert("Enter at least one valid core destination.");
         return;
       }
 
-      optimizeRoute(locations, timeLimit);
-    }
-
-    function optimizeRoute(locations, timeLimit) {
       const service = new google.maps.DistanceMatrixService();
-      const addresses = locations.map(l => l.address);
+      const allLocations = [...coreLocations, ...bonusLocations];
+      const addresses = allLocations.map(l => l.address);
+
       service.getDistanceMatrix({
         origins: addresses,
         destinations: addresses,
         travelMode: 'DRIVING'
       }, (response, status) => {
         if (status !== 'OK') {
-          alert("Error with Distance Matrix");
+          alert("Distance Matrix failed");
           return;
         }
+
         const matrix = response.rows;
-        let bestRoute = [], maxPoints = 0, bestTimes = [];
+        const n = coreLocations.length;
+        const dp = Array(1 << n).fill().map(() => Array(n).fill(Infinity));
+        const score = Array(1 << n).fill().map(() => Array(n).fill(0));
+        dp[1][0] = 0;
 
-        function permute(path, visited, timeSpent, score, timestamps) {
-          if (timeSpent <= timeLimit && score > maxPoints) {
-            maxPoints = score;
-            bestRoute = [...path];
-            bestTimes = [...timestamps];
-            if (debugMode) console.log("New best:", bestRoute);
-          }
-
-          for (let i = 1; i < locations.length; i++) {
-            if (!visited.includes(i)) {
-              const from = visited[visited.length - 1];
-              const travel = matrix[from]?.elements[i];
-              if (!travel || travel.status !== 'OK') continue;
+        for (let mask = 1; mask < (1 << n); mask++) {
+          for (let u = 0; u < n; u++) {
+            if (!(mask & (1 << u))) continue;
+            for (let v = 0; v < n; v++) {
+              if (mask & (1 << v)) continue;
+              const travel = matrix[u].elements[v];
+              if (travel.status !== 'OK') continue;
               const travelTime = travel.duration.value / 60;
-              const newTime = timeSpent + travelTime + locations[i].taskTime;
-              const newScore = score + locations[i].pointValue;
-              const nowTime = new Date();
-              nowTime.setMinutes(nowTime.getMinutes() + newTime);
-              permute([...path, i], [...visited, i], newTime, newScore, [...timestamps, nowTime]);
+              const totalTime = dp[mask][u] + travelTime + coreLocations[v].taskTime;
+              const totalScore = score[mask][u] + coreLocations[v].pointValue;
+              const nextMask = mask | (1 << v);
+              if (totalTime <= timeLimit && totalScore > score[nextMask][v]) {
+                dp[nextMask][v] = totalTime;
+                score[nextMask][v] = totalScore;
+              }
             }
           }
         }
 
-        permute([0], [0], 0, 0, [new Date()]);
+        let maxScore = 0, bestEnd = 0, bestMask = 0;
+        for (let mask = 0; mask < (1 << n); mask++) {
+          for (let u = 0; u < n; u++) {
+            if (score[mask][u] > maxScore) {
+              maxScore = score[mask][u];
+              bestEnd = u;
+              bestMask = mask;
+            }
+          }
+        }
 
-        showSummary(bestRoute.map(i => locations[i].address), maxPoints, bestTimes);
-        displayRoute(bestRoute.map(i => locations[i].address));
+        const path = [];
+        let u = bestEnd, mask = bestMask;
+        while (mask > 1) {
+          path.push(u);
+          for (let v = 0; v < n; v++) {
+            if ((mask & (1 << v)) && v !== u) {
+              const travel = matrix[v].elements[u].duration.value / 60;
+              const prevTime = dp[mask][u] - travel - coreLocations[u].taskTime;
+              if (Math.abs(dp[mask ^ (1 << u)][v] - prevTime) < 1e-6) {
+                u = v;
+                mask ^= (1 << u);
+                break;
+              }
+            }
+          }
+        }
+        path.push(0);
+        path.reverse();
+
+        let usedTime = dp[bestMask][bestEnd];
+        let spareTime = timeLimit - usedTime;
+        const coreAddresses = path.map(i => coreLocations[i].address);
+
+        const bonusUsed = [];
+        let lastCoreIndex = path[path.length - 1];
+        bonusLocations.forEach((b, i) => {
+          const idx = coreLocations.length + i;
+          const travel = matrix[lastCoreIndex].elements[idx];
+          if (travel.status !== 'OK') return;
+          const travelTime = travel.duration.value / 60;
+          if (travelTime + b.taskTime <= spareTime) {
+            bonusUsed.push(b);
+            spareTime -= (travelTime + b.taskTime);
+            lastCoreIndex = idx;
+          }
+        });
+
+        showSummary(coreAddresses, maxScore, bonusUsed);
+        displayRoute(coreAddresses.concat(bonusUsed.map(b => b.address)));
       });
     }
 
-    function showSummary(route, points, times) {
-      let summary = `Optimal Route with ${points} Points (some locations may exceed limit):\n\n`;
-      route.forEach((addr, i) => {
-        summary += `${i + 1}. ${addr}`;
-        if (times[i]) summary += ` - ETA ${times[i].toLocaleTimeString()}`;
-        summary += "\n";
-      });
+    function showSummary(route, points, bonus) {
+      let summary = `Optimal Route with ${points} Points (within limit):\n\n`;
+      route.forEach((addr, i) => summary += `${i + 1}. ${addr}\n`);
+      if (bonus.length > 0) {
+        summary += "\nBonus Locations (optional):\n";
+        bonus.forEach(b => {
+          summary += `- ${b.address} (${b.pointValue} pts, ${b.taskTime} min)\n`;
+        });
+      }
       document.getElementById("routeSummary").textContent = summary;
     }
 
