@@ -22,7 +22,10 @@
     <h2>Route Optimizer</h2>
     <label for="timeLimit">Total Available Time (minutes):</label>
     <input type="number" id="timeLimit" value="180"><br>
+    <label for="startLocationTime">Start Time (HH:MM):</label>
+    <input type="time" id="startLocationTime"><br>
     <button onclick="addLocationInput()">Add Location</button>
+    <button onclick="setStartLocation()">Set Start Location</button>
     <div id="locations"></div>
     <button onclick="calculateRoute()">Optimize Route</button>
     <div id="map"></div>
@@ -83,8 +86,38 @@
             upgradeAutocompleteInputs();
         }
 
+        function setStartLocation() {
+            const startLocation = {
+                address: "Start Location",  // Default address text
+                taskTime: 0,                // No time
+                pointValue: 0               // No points
+            };
+            locations = [startLocation, ...locations];
+            updateLocationsList();
+        }
+
+        function updateLocationsList() {
+            const locationsContainer = document.getElementById("locations");
+            locationsContainer.innerHTML = '';  // Clear the existing list
+            locations.forEach((location, index) => {
+                const div = document.createElement("div");
+                div.innerHTML = `
+                    <input class="address" placeholder="Address" value="${location.address}" />
+                    <input type="number" placeholder="Task Time (minutes)" class="taskTime" value="${location.taskTime}" />
+                    <input type="number" placeholder="Point Value" class="pointValue" value="${location.pointValue}" />
+                    <button onclick="this.parentNode.remove()">Remove</button><br><br>
+                `;
+                locationsContainer.appendChild(div);
+                if (index === 0) {
+                    div.querySelector(".address").disabled = true; // Disable the start location input field
+                }
+                upgradeAutocompleteInputs();
+            });
+        }
+
         function calculateRoute() {
             const timeLimit = parseInt(document.getElementById("timeLimit").value) + 60;
+            const startTime = document.getElementById("startLocationTime").value || "12:00"; // Default time if not specified
             locations = [];
             document.querySelectorAll("#locations div").forEach(div => {
                 const address = div.querySelector(".address").value;
@@ -98,16 +131,17 @@
                 alert("Enter at least two valid locations.");
                 return;
             }
-            optimizeRoute(timeLimit);
+            optimizeRoute(timeLimit, startTime);
         }
 
-        function optimizeRoute(timeLimit) {
+        function optimizeRoute(timeLimit, startTime) {
             const service = new google.maps.DistanceMatrixService();
             const addresses = locations.map(l => l.address);
             service.getDistanceMatrix({
                 origins: addresses,
                 destinations: addresses,
-                travelMode: 'DRIVING'
+                travelMode: 'DRIVING',
+                departureTime: new Date(startTime)
             }, (response, status) => {
                 if (status !== 'OK') {
                     alert('Error with Distance Matrix');
